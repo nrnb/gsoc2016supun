@@ -1,2 +1,10 @@
 /bin
 /target
+.idea/
+*.iml
+tags
+*.jpg
+.metadata
+.project
+.settings
+.classpath

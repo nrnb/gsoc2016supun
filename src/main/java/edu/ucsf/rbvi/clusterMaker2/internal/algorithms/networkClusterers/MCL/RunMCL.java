@@ -1,6 +1,6 @@
 package edu.ucsf.rbvi.clusterMaker2.internal.algorithms.networkClusterers.MCL;
 
-
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.Set;
 import java.lang.Math;
 
-
 import org.cytoscape.model.CyColumn;
 import org.cytoscape.model.CyEdge;
 import org.cytoscape.model.CyNetwork;
@@ -29,7 +28,8 @@ import org.cytoscape.work.TunableHandler;
 import org.cytoscape.work.TaskMonitor;
 
 import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.NodeCluster;
-import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.DistanceMatrix;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.CyMatrix;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.Matrix;
 
 import cern.colt.function.tdouble.IntIntDoubleFunction;
 import cern.colt.matrix.tdouble.DoubleFactory2D;
@@ -43,28 +43,26 @@ public class RunMCL {
 	private int number_iterations; //number of inflation/expansion cycles
 	private double clusteringThresh; //Threshold used to remove weak edges between distinct clusters
 	private double maxResidual; //The maximum residual to look for
-	private List<CyNode> nodes;
-	private List<CyEdge> edges;
 	private boolean canceled = false;
 	protected int clusterCount = 0;
 	private boolean createMetaNodes = false;
-	private DistanceMatrix distanceMatrix = null;
-	private DoubleMatrix2D matrix = null;
-	private boolean debug = false;
+	private CyMatrix distanceMatrix = null;
+	private CyMatrix matrix = null;
+	private List<CyNode> nodes = null;
+	private boolean debug = true;
 	private int nThreads = Runtime.getRuntime().availableProcessors()-1;
 	
-	public RunMCL(DistanceMatrix dMat, double inflationParameter, int num_iterations, 
+	public RunMCL(CyMatrix dMat, double inflationParameter, int num_iterations, 
             double clusteringThresh, double maxResidual, int maxThreads, TaskMonitor monitor )
 	{
 			
 		this.distanceMatrix = dMat;
+		this.matrix = dMat.copy();
 		this.inflationParameter = inflationParameter;
 		this.number_iterations = num_iterations;
 		this.clusteringThresh = clusteringThresh;
 		this.maxResidual = maxResidual;
-		nodes = distanceMatrix.getNodes();
-		edges = distanceMatrix.getEdges();
-		this.matrix = distanceMatrix.getDistanceMatrix();
+		nodes = distanceMatrix.getRowNodes();
 		if (maxThreads > 0)
 			nThreads = maxThreads;
 		else
@@ -74,7 +72,8 @@ public class RunMCL {
 		monitor.showMessage(TaskMonitor.Level.INFO,"Iterations = "+num_iterations);
 		monitor.showMessage(TaskMonitor.Level.INFO,"Clustering Threshold = "+clusteringThresh);
 		monitor.showMessage(TaskMonitor.Level.INFO,"Threads = "+nThreads);
-		monitor.showMessage(TaskMonitor.Level.INFO,"Matrix info: = "+distanceMatrix.printMatrixInfo(matrix));
+		monitor.showMessage(TaskMonitor.Level.INFO,"Matrix info: = "+distanceMatrix.printMatrixInfo());
+		
 		
 	}
 	
@@ -92,58 +91,55 @@ public class RunMCL {
 		double numClusters;
 
 		debugln("Initial matrix:");
-		printMatrix(matrix);
+		
+		
+		matrix.printMatrixInfo();
 
 		// Normalize
-		normalize(matrix, clusteringThresh, false);
+		normalize(matrix.getColtMatrix(), clusteringThresh, false);
 
 		debugln("Normalized matrix:");
-		printMatrix(matrix);
-
-		// logger.info("Calculating clusters");
+		matrix.printMatrixInfo();
 
 		double residual = 1.0;
 		IntIntDoubleFunction myPow = new MatrixPow(inflationParameter);
-		// debugln("residual = "+residual+" maxResidual = "+maxResidual);
+		debugln("residual = "+residual+" maxResidual = "+maxResidual);
 		for (int i=0; (i<number_iterations)&&(residual>maxResidual); i++)
 		{
 			// Expand
 			{
 				long t = System.currentTimeMillis();
 				monitor.setStatusMessage("Iteration: "+(i+1)+" expanding "); //monitor.setStatus();
-				// debugln("Iteration: "+(i+1)+" expanding ");
-				// printMatrixInfo(matrix);
-				if (nThreads > 1) {
-					matrix = multiplyMatrix(matrix, matrix);
-				} else {
-					DoubleMatrix2D newMatrix = DoubleFactory2D.sparse.make(matrix.rows(), matrix.columns());
-					matrix = matrix.zMult(matrix, newMatrix);
-				}
+				debugln("Iteration: "+(i+1)+" expanding ");
+				matrix.printMatrixInfo();
+				Matrix multiMatrix = matrix.multiplyMatrix(matrix);
+				matrix = matrix.copy(multiMatrix);
+
 				// Normalize
-				normalize(matrix, clusteringThresh, false);
+				normalize(matrix.getColtMatrix(), clusteringThresh, false);
 				monitor.showMessage(TaskMonitor.Level.INFO,"Expansion "+(i+1)+" took "+(System.currentTimeMillis()-t)+"ms");
 			}
 
-			// printMatrix(matrix);
-			// debugln("^ "+(i+1)+" after expansion");
+			debugln("^ "+(i+1)+" after expansion");
 
 			// Inflate
+			DoubleMatrix2D m = matrix.getColtMatrix();
 			{
 				long t = System.currentTimeMillis();
 				monitor.setStatusMessage("Iteration: "+(i+1)+" inflating");	//monitor.setStatusMessage
-				// debugln("Iteration: "+(i+1)+" inflating");
-				// printMatrixInfo(matrix);
-				matrix.forEachNonZero(myPow);
+				debugln("Iteration: "+(i+1)+" inflating");
+
+				m.forEachNonZero(myPow);
+
 				// Normalize
-				normalize(matrix, clusteringThresh, true);
+				normalize(matrix.getColtMatrix(), clusteringThresh, true);
 			}
 
-			// printMatrix(matrix);
-			// debugln("^ "+(i+1)+" after inflation");
+			debugln("^ "+(i+1)+" after inflation");
 
-			matrix.trimToSize();
-			residual = calculateResiduals(matrix);
-			// debugln("Iteration: "+(i+1)+" residual: "+residual);
+			m.trimToSize();
+			residual = calculateResiduals(m);
+			debugln("Iteration: "+(i+1)+" residual: "+residual);
 
 			if (canceled) {
 				monitor.setStatusMessage("canceled"); 	//monitor.setStatusMessage
@@ -152,15 +148,13 @@ public class RunMCL {
 		}
 
 		// If we're in debug mode, output the matrix
-		// printMatrixInfo(matrix);
-		// printMatrix(matrix);
+		matrix.printMatrixInfo();
 
 		monitor.setStatusMessage("Assigning nodes to clusters");	//monitor.setStatusMessage
 
 		clusterCount = 0;
 		HashMap<Integer, NodeCluster> clusterMap = new HashMap<Integer, NodeCluster>();
-		matrix.forEachNonZero(new ClusterMatrix(clusterMap));
-		// System.out.println("Cluster map has "+clusterMap.keySet().size()+" clusters");
+		matrix.getColtMatrix().forEachNonZero(new ClusterMatrix(clusterMap));
 
 		//Update node attributes in network to include clusters. Create cygroups from clustered nodes
 		monitor.setStatusMessage("Created "+clusterCount+" clusters");
@@ -180,11 +174,6 @@ public class RunMCL {
 			if (cMap.containsKey(cluster))
 				continue;
 
-			// for (Integer i: cluster) {
-			// 	CyNode node = nodes.get(i.intValue());
-			// 	debug(node.getIdentifier()+"\t");
-			// }
-			// debugln();
 			cMap.put(cluster,cluster);
 
 			cluster.setClusterNumber(clusterNumber);
@@ -227,17 +216,6 @@ public class RunMCL {
 	}
 	
 	/**
-	 * This method normalizes the weights to between 0 and 1.
-	 *
-	 * @param matrix the (sparse) data matrix we're operating on
-	 * @param min the minimum weight
-	 * @param max the maximum weight
-	 */
-	private void normalizeWeights(DoubleMatrix2D matrix, double min, double max) {
-		matrix.forEachNonZero(new MatrixNormalizeWeights(min, max));
-	}
-
-	/**
 	 * This method calculates the residuals.  Calculate the sum and
 	 * sum of squares for each row, then return the maximum residual.
 	 *
@@ -255,42 +233,10 @@ public class RunMCL {
 		}
 		return residual;
 	}
+
+	private static DecimalFormat scFormat = new DecimalFormat("0.###E0");
+	private static DecimalFormat format = new DecimalFormat("0.###");
 	
-	/**
-	 * Debugging routine to print out information about a matrix
-	 *
-	 * @param matrix the matrix we're going to print out information about
-	 */
-	private void printMatrixInfo(DoubleMatrix2D matrix) {
-		debugln("Matrix("+matrix.rows()+", "+matrix.columns()+")");
-		if (matrix.getClass().getName().indexOf("Sparse") >= 0)
-			debugln(" matrix is sparse");
-		else
-			debugln(" matrix is dense");
-		debugln(" cardinality is "+matrix.cardinality());
-	}
-
-	/**
-	 * Debugging routine to print out information about a matrix
-	 *
-	 * @param matrix the matrix we're going to print out information about
-	 */
-	private void printMatrix(DoubleMatrix2D matrix) {
-		for (int row = 0; row < matrix.rows(); row++) {
-			debug(nodes.get(row).getSUID()+":\t"); //node.getIdentifier()
-			for (int col = 0; col < matrix.columns(); col++) {
-				debug(""+matrix.get(row,col)+"\t");
-			}
-			debugln();
-		}
-		debugln("Matrix("+matrix.rows()+", "+matrix.columns()+")");
-		if (matrix.getClass().getName().indexOf("Sparse") >= 0)
-			debugln(" matrix is sparse");
-		else
-			debugln(" matrix is dense");
-		debugln(" cardinality is "+matrix.cardinality());
-	}
-
 	private void debugln(String message) {
 		if (debug) System.out.println(message);
 	}
@@ -303,82 +249,6 @@ public class RunMCL {
 		if (debug) System.out.print(message);
 	}
 
-	private DoubleMatrix2D multiplyMatrix(DoubleMatrix2D A, DoubleMatrix2D B) {
-		int m = A.rows();
-		int n = A.columns();
-		int p = B.columns();
-
-		// Create views into B
-		final DoubleMatrix1D[] Brows= new DoubleMatrix1D[n];
-		for (int i = n; --i>=0; ) Brows[i] = B.viewRow(i);
-
-		// Create a series of 1D vectors
-		final DoubleMatrix1D[] Crows= new DoubleMatrix1D[n];
-		for (int i = m; --i>=0; ) Crows[i] = B.like1D(m);
-
-		// Create the thread pools
-		final ExecutorService[] threadPools = new ExecutorService[nThreads];
-		for (int pool = 0; pool < threadPools.length; pool++) {
-				threadPools[pool] = Executors.newFixedThreadPool(1);
-		}
-
-		A.forEachNonZero(
-			new IntIntDoubleFunction() {
-				public double apply(int row, int column, double value) {
-
-					Runnable r = new ThreadedDotProduct(value, Brows[column], Crows[row]);
-					threadPools[row%nThreads].submit(r);
-					return value;
-				}
-			}
-		);
-
-		for (int pool = 0; pool < threadPools.length; pool++) {
-			threadPools[pool].shutdown();
-			try {
-				boolean result = threadPools[pool].awaitTermination(7, TimeUnit.DAYS);
-			} catch (Exception e) {}
-		}
-		// Recreate C
-		return create2DMatrix(Crows);
-	}
-
-	private DoubleMatrix2D create2DMatrix (DoubleMatrix1D[] rows) {
-		int columns = (int)rows[0].size();
-		DoubleMatrix2D C = DoubleFactory2D.sparse.make(rows.length, columns);
-		for (int row = 0; row < rows.length; row++) {
-			for (int col = 0; col < columns; col++) {
-				double value = rows[row].getQuick(col);
-				if (value != 0.0)
-					C.setQuick(row, col, value);
-			}
-		}
-		return C;
-	}
-	
-	private class ThreadedDotProduct implements Runnable {
-		double value;
-		DoubleMatrix1D Bcol;
-		DoubleMatrix1D Crow;
-		// final cern.jet.math.PlusMult fun = cern.jet.math.PlusMult.plusMult(0);
-
-		ThreadedDotProduct(double value, DoubleMatrix1D Bcol, 
-		                   DoubleMatrix1D Crow) {
-			this.value = value;
-			this.Bcol = Bcol;
-			this.Crow = Crow;
-		}
-
-		public void run() {
-			// fun.multiplicator = value;
-			for (int k = 0; k < Bcol.size(); k++) {
-				if (Bcol.getQuick(k) != 0.0) {
-					Crow.setQuick(k, Crow.getQuick(k)+Bcol.getQuick(k)*value);
-				}
-			}
-			// Crow.assign(Bcol, fun);
-		}
-	}
 	
 	/**
 	 * The MatrixPow class raises the value of each non-zero cell of the matrix
@@ -460,20 +330,6 @@ public class RunMCL {
 		}
 	}
 	
-	private class MatrixNormalizeWeights implements IntIntDoubleFunction {
-		double min;
-		double max;
-
-		public MatrixNormalizeWeights(double min, double max) {
-			this.min = min;
-			this.max = max;
-		}
-
-		public double apply(int row, int column, double value) {
-			return (value - min) / (max - min);
-		}
-	}
-	
 	private class ClusterMatrix implements IntIntDoubleFunction {
 		Map<Integer, NodeCluster> clusterMap;
 
@@ -502,7 +358,7 @@ public class RunMCL {
 				} else {
 					// logger.debug("Adding "+row+" to "+columnCluster.getClusterNumber());
 					// logger.debug("clusterCount = "+clusterCount);
-					columnCluster.add(nodes, row);
+					columnCluster.add(distanceMatrix.getRowNode(row));
 				}
 				updateClusters(columnCluster);
 			} else {
@@ -513,14 +369,14 @@ public class RunMCL {
 					rowCluster = clusterMap.get(row);
 					// logger.debug("Adding "+column+" to "+rowCluster.getClusterNumber());
 					// logger.debug("clusterCount = "+clusterCount);
-					rowCluster.add(nodes, column);
+					rowCluster.add(distanceMatrix.getColumnNode(column));
 				} else {
 					clusterCount++;
 					rowCluster = new NodeCluster();
 					// logger.debug("Created new cluster "+rowCluster.getClusterNumber()+" with "+row+" and "+column);
 					// logger.debug("clusterCount = "+clusterCount);
-					rowCluster.add(nodes, column);
-					rowCluster.add(nodes, row);
+					rowCluster.add(distanceMatrix.getColumnNode(column));
+					rowCluster.add(distanceMatrix.getRowNode(row));
 				}
 				updateClusters(rowCluster);
 			}
@@ -534,6 +390,3 @@ public class RunMCL {
 		}
 	}
 }
-
-	
-	

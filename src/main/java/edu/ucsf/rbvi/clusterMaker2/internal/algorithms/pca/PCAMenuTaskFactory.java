@@ -6,6 +6,7 @@
 package edu.ucsf.rbvi.clusterMaker2.internal.algorithms.pca;
 
 import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.AbstractClusterTaskFactory;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterManager;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterTaskFactory;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterViz;
 import java.util.Collections;
@@ -17,12 +18,14 @@ import org.cytoscape.work.TaskIterator;
  *
  * @author root
  */
-public class PCAMenuTaskFactory extends AbstractClusterTaskFactory{
-        public PCAMenuTaskFactory(){
-        }
-    
-        public String getShortName() {return "pca";};
-	public String getName() {return "--- Principal Component Analysis ---";};
+public class PCAMenuTaskFactory implements ClusterTaskFactory{
+	ClusterManager clusterManager;
+	public PCAMenuTaskFactory(ClusterManager clusterManager) {
+		this.clusterManager = clusterManager;
+	}
+
+	public String getShortName() {return "dimred";};
+	public String getName() {return "--- Dimensionality Reduction ---";};
 
 	public ClusterViz getVisualizer() {
 		return null;
@@ -32,13 +35,13 @@ public class PCAMenuTaskFactory extends AbstractClusterTaskFactory{
 		return false;
 	}
         
-        @Override
-        public boolean isAvailable(CyNetwork network) {
+	@Override
+	public boolean isAvailable(CyNetwork network) {
 		return false;
 	}
 
 	public List<ClusterTaskFactory.ClusterType> getTypeList() { 
-		return Collections.singletonList(ClusterTaskFactory.ClusterType.PCA); 
+		return Collections.singletonList(ClusterTaskFactory.ClusterType.DIMRED); 
 	}
 
 	public TaskIterator createTaskIterator() {

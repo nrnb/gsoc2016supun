@@ -52,16 +52,17 @@ import org.cytoscape.work.TaskMonitor;
 import org.cytoscape.work.Tunable;
 
 // clusterMaker imports
-import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.Matrix;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterAlgorithm;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterManager;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterResults;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterViz;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.CyMatrix;
 
 import edu.ucsf.rbvi.clusterMaker2.internal.utils.ModelUtils;
 import edu.ucsf.rbvi.clusterMaker2.internal.utils.ViewUtils;
 
 import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.AbstractAttributeClusterer;
+import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.matrix.CyMatrixFactory;
 
 public class FeatureVectorCluster extends AbstractAttributeClusterer {
 	public static String SHORTNAME = "featurevector";
@@ -115,7 +116,8 @@ public class FeatureVectorCluster extends AbstractAttributeClusterer {
 		}
 
 		// Create the matrix
-		Matrix matrix = new Matrix(network, attributeArray, false, context.ignoreMissing, context.selectedOnly);
+		// Matrix matrix = new Matrix(network, attributeArray, false, context.ignoreMissing, context.selectedOnly);
+		CyMatrix matrix = CyMatrixFactory.makeSmallMatrix(network, attributeArray, false, context.ignoreMissing, context.selectedOnly, false);
 
 		if (monitor != null) {
 			monitor.setProgress(0.1);
@@ -124,7 +126,7 @@ public class FeatureVectorCluster extends AbstractAttributeClusterer {
 		}
 
 		// Create a weight vector of all ones (we don't use individual weighting, yet)
-		matrix.setUniformWeights();
+		// matrix.setUniformWeights();
 
 		// Handle special cases
 		if (context.zeroMissing)
@@ -139,7 +141,7 @@ public class FeatureVectorCluster extends AbstractAttributeClusterer {
 		double distanceMatrix[][] = new double[nNodes][nNodes];
 		for (int i = 0; i < nNodes; i++) {
 			for (int j = i+1; j < nNodes; j++) {
- 				double distance = context.metric.getSelectedValue().getMetric(matrix, matrix, matrix.getWeights(), i, j);
+ 				double distance = context.metric.getSelectedValue().getMetric(matrix, matrix, i, j);
 				maxdistance = Math.max(maxdistance, distance);
 				mindistance = Math.min(mindistance, distance);
 				distanceMatrix[i][j] = distance;
@@ -147,6 +149,8 @@ public class FeatureVectorCluster extends AbstractAttributeClusterer {
 			if (canceled) return;
 			monitor.setProgress((double)i/((double)nNodes*4));
 		}
+		monitor.setStatusMessage("Min distance = "+mindistance+", max distance = "+maxdistance);
+
 
 		monitor.setStatusMessage("Assigning values to edges");
 
@@ -161,13 +165,14 @@ public class FeatureVectorCluster extends AbstractAttributeClusterer {
 		for (int i = 0; i < nNodes; i++) {
 			for (int j = i+1; j < nNodes; j++) {
 				// time = System.currentTimeMillis();
+				// This scales the distances to be between 0.0 and 1.0
 				double distance = (distanceMatrix[i][j]-mindistance)/scale;
-
-				CyNode source = (CyNode)ModelUtils.getNetworkObjectWithName(network, matrix.getRowLabel(i), CyNode.class);
-				CyNode target = (CyNode)ModelUtils.getNetworkObjectWithName(network, matrix.getRowLabel(j), CyNode.class);
 
 				if (context.createNewNetwork == true && distance > context.edgeCutoff && context.edgeCutoff != 0.0)
 					continue;
+
+				CyNode source = (CyNode)ModelUtils.getNetworkObjectWithName(network, matrix.getRowLabel(i), CyNode.class);
+				CyNode target = (CyNode)ModelUtils.getNetworkObjectWithName(network, matrix.getRowLabel(j), CyNode.class);
 
 				// time = System.currentTimeMillis();
 				if (context.createNewNetwork == true) {
@@ -188,6 +193,8 @@ public class FeatureVectorCluster extends AbstractAttributeClusterer {
 			if (canceled) return;
 			monitor.setProgress(25.0 + (75.0 * (double)i/(double)nNodes)/100.0);
 		}
+
+		System.out.println("Network created -- creating view");
 
 		// If we're supposed to, create the new network
 		if (context.createNewNetwork) {

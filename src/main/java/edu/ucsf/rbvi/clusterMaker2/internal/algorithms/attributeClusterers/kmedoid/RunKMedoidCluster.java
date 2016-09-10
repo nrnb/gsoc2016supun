@@ -55,22 +55,24 @@ import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterAlgorithm;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterManager;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterResults;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterViz;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.CyMatrix;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.DistanceMetric;
 
+import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.AbstractClusterAlgorithm;
 import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.AbstractKClusterAlgorithm;
-import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.DistanceMetric;
-import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.Matrix;
+import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.matrix.CyMatrixFactory;
 
 public class RunKMedoidCluster extends AbstractKClusterAlgorithm {
 	KMedoidContext context;
 
 	public RunKMedoidCluster(CyNetwork network, String weightAttributes[], DistanceMetric metric, 
-	                   TaskMonitor monitor, KMedoidContext context) {
-		super(network, weightAttributes, metric, monitor);
+	                   TaskMonitor monitor, KMedoidContext context, AbstractClusterAlgorithm parentTask) {
+		super(network, weightAttributes, metric, monitor, parentTask);
 		this.context = context;
 	}
 
-	// The kmeans implementation of a k-clusterer
-	public int kcluster(int nClusters, int nIterations, Matrix matrix, DistanceMetric metric, int[] clusterID) {
+	// The kmedoid implementation of a k-clusterer
+	public int kcluster(int nClusters, int nIterations, CyMatrix matrix, DistanceMetric metric, int[] clusterID) {
 		// System.out.println("Running kmedoid with "+nClusters+" clusters");
 		if (monitor != null)
 			monitor.setProgress(0);
@@ -81,19 +83,22 @@ public class RunKMedoidCluster extends AbstractKClusterAlgorithm {
 		double[][] distances = new double[matrix.nRows()][matrix.nRows()];
 		for (int i = 0; i < matrix.nRows(); i++) {
 			for (int j = 0; j < matrix.nRows(); j++) {
-				distances[i][j] = metric.getMetric(matrix, matrix, matrix.getWeights(), i, j);
+				distances[i][j] = metric.getMetric(matrix, matrix, i, j);
 			}
 		}
 
 		int[] centers;
 		if (context.kcluster.initializeNearCenter) {
-			centers = chooseCentralElementsAsCenters(matrix.nRows(), nClusters, distances, null);
+			centers = chooseCentralElementsAsCenters(matrix.nRows(), nClusters, 
+					                                     matrix.getDistanceMatrix(metric).toArray(), clusterID);
 		} else {
-			centers = chooseRandomElementsAsCenters(matrix.nRows(), nClusters);
+			chooseRandomElementsAsCenters(matrix.nRows(), nClusters, clusterID);
+			centers = calculateCenters(nClusters, matrix, metric, clusterID);
 		}
 		int[] oldCenters = null;
 		// outputCenters(centers);
 
+		
 		while (centersChanged(oldCenters, centers)) {
 			oldCenters = centers;
 			// outputClusterId(clusterID);
@@ -108,8 +113,6 @@ public class RunKMedoidCluster extends AbstractKClusterAlgorithm {
 		// outputCenters(centers);
   	return 1;
 	}
-
-	public void cancel() { cancelled = true; }
 
 
 	private void assignPointsToClosestCenter(int[] centers, double[][] distances, int[] clusterId) {
@@ -132,14 +135,8 @@ public class RunKMedoidCluster extends AbstractKClusterAlgorithm {
 		}
 	} 
 
-	private int[] calculateCenters(int nClusters, Matrix matrix, DistanceMetric metric, int[] clusterId) {
+	private int[] calculateCenters(int nClusters, CyMatrix matrix, DistanceMetric metric, int[] clusterId) {
 		int[] newCenters = new int[nClusters];
-		// Matrix cData = new Matrix(network, nClusters, matrix.nRows());
-		// Matrix cData = new Matrix(network, nClusters, matrix.nColumns());
-
-		// Calculate all of the cluster centers
-		// getClusterMeans(nClusters, matrix, cData, clusterId);
-
 		// For each cluster, find the closest row
 		for (int cluster = 0; cluster < nClusters; cluster++) {
 			// newCenters[cluster] = findMedoid(matrix, cData, cluster, clusterId);
@@ -148,13 +145,13 @@ public class RunKMedoidCluster extends AbstractKClusterAlgorithm {
 		return newCenters;
 	}
 
-	private int findMedoid(Matrix matrix, int cluster, int[] clusterid) {
+	private int findMedoid(CyMatrix matrix, int cluster, int[] clusterid) {
 		double minDistance = Double.MAX_VALUE;
 		int medoid = -1;
 		// System.out.println("Looking for cluster "+cluster);
 		for (int row = 0; row < matrix.nRows(); row++) {
 			if (clusterid[row] == cluster) {
-				double distance = metric.getMetric(matrix, matrix, matrix.getWeights(), row, cluster);
+				double distance = metric.getMetric(matrix, matrix, row, cluster);
 				if (distance < minDistance) {
 					medoid = row;
 					minDistance = distance;

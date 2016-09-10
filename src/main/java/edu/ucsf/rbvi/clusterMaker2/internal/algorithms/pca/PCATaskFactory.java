@@ -19,15 +19,14 @@ import org.cytoscape.work.TaskIterator;
  * @author root
  */
 public class PCATaskFactory extends AbstractClusterTaskFactory{
-        ClusterManager clusterManager;
-        PCAContext context = null;
-    
-        public PCATaskFactory(ClusterManager clusterManager){
-            context = new PCAContext();
-            this.clusterManager = clusterManager;
-        }
-    
-        public String getShortName() {return PCA.SHORTNAME;};
+	PCAContext context = null;
+
+	public PCATaskFactory(ClusterManager clusterManager){
+		super(clusterManager);
+		context = new PCAContext();
+	}
+
+	public String getShortName() {return PCA.SHORTNAME;};
 	public String getName() {return PCA.NAME;};
 
 	public ClusterViz getVisualizer() {
@@ -35,12 +34,8 @@ public class PCATaskFactory extends AbstractClusterTaskFactory{
 		return null;
 	}
 
-	public boolean isReady() {
-		return true;
-	}
-
 	public List<ClusterTaskFactory.ClusterType> getTypeList() { 
-		return Collections.singletonList(ClusterTaskFactory.ClusterType.PCA); 
+		return Collections.singletonList(ClusterTaskFactory.ClusterType.DIMRED); 
 	}
 
 	public TaskIterator createTaskIterator() {

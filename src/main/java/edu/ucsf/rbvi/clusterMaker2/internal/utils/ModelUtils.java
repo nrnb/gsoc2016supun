@@ -5,11 +5,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import org.cytoscape.model.CyColumn;
-import org.cytoscape.model.CyEdge.Type;
 import org.cytoscape.model.CyEdge;
 import org.cytoscape.model.CyIdentifiable;
 import org.cytoscape.model.CyNetwork;
@@ -31,7 +28,9 @@ public class ModelUtils {
 		List<CyEdge> edgeList = new ArrayList<CyEdge>();
 		for (int rowIndex = 0; rowIndex < nodes.size(); rowIndex++) {
 			for (int colIndex = rowIndex; colIndex < nodes.size(); colIndex++) {
-				List<CyEdge> connectingEdges = network.getConnectingEdgeList(nodes.get(rowIndex), nodes.get(colIndex), CyEdge.Type.ANY);
+				List<CyEdge> connectingEdges = 
+								network.getConnectingEdgeList(nodes.get(rowIndex), 
+								                              nodes.get(colIndex), CyEdge.Type.ANY);
 				if (connectingEdges != null) edgeList.addAll(connectingEdges);
 			}
 		}
@@ -221,6 +220,24 @@ public class ModelUtils {
 		return new ListSingleSelection<String>("--None--");
 	}
 
+	public static ListMultipleSelection<String> updateEdgeMultiAttributeList(CyNetwork network,
+	                                                                         ListMultipleSelection<String> attribute) {
+		List<String> attributeArray = getAllAttributes(network, network.getDefaultEdgeTable());
+		if (attributeArray.size() > 0) {
+			ListMultipleSelection<String> newAttribute = new ListMultipleSelection<>(attributeArray);
+			if (attribute != null) {
+				try {
+					newAttribute.setSelectedValues(attribute.getSelectedValues());
+				} catch (IllegalArgumentException e) {
+					newAttribute.setSelectedValues(Collections.singletonList(attributeArray.get(0)));
+				}
+			} else
+				newAttribute.setSelectedValues(Collections.singletonList(attributeArray.get(0)));
+			return newAttribute;
+		}
+		return new ListMultipleSelection<>("--None--");
+	}
+
 	public static String getName(CyNetwork network, CyIdentifiable obj) {
 		CyRow row = network.getRow(obj);
 		if (row == null) return null;
@@ -261,6 +278,28 @@ public class ModelUtils {
 		return Double.valueOf(val.doubleValue());
 	}
 
+	public static List<CyNode>sortNodeList(CyNetwork network, List<CyNode>nodeList) {
+		List<CyNode> list = new ArrayList<CyNode>(nodeList);
+		Collections.sort(list, new CyIdentifiableNameComparator(network));
+		return list;
+	}
+
+	public static List<CyNode>getNodeList(CyNetwork network, boolean selectedOnly) {
+		if (selectedOnly) {
+			List<CyNode> nodes = CyTableUtil.getNodesInState(network,CyNetwork.SELECTED,true);
+			return new ArrayList<CyNode>(CyTableUtil.getNodesInState(network,CyNetwork.SELECTED,true));
+		} else {
+			List<CyNode> nodes = network.getNodeList();
+			return new ArrayList<CyNode>(network.getNodeList());
+		}
+	}
+
+	public static List<CyNode>getSortedNodeList(CyNetwork network, boolean selectedOnly) {
+		List<CyNode> list = getNodeList(network, selectedOnly);
+		Collections.sort(list, new CyIdentifiableNameComparator(network));
+		return list;
+	}
+
 	private static List<String> getAllAttributes(CyNetwork network, CyTable table) {
 		String[] attributeArray = new String[1];
 		// Create the list by combining node and edge attributes into a single list
@@ -283,5 +322,25 @@ public class ModelUtils {
 			}
 		}
 	}
-	
+
+	public static void clearSelected(CyNetwork network, Class<? extends CyIdentifiable> clzz) {
+		if (CyNode.class.isAssignableFrom(clzz)) {
+			for (CyNode id: CyTableUtil.getNodesInState(network, CyNetwork.SELECTED, true))
+				setSelected(network, id, false);
+		} else if (CyEdge.class.isAssignableFrom(clzz)) {
+			for (CyEdge id: CyTableUtil.getEdgesInState(network, CyNetwork.SELECTED, true))
+				setSelected(network, id, false);
+		}
+	}
+
+	public static boolean isSelected(CyNetwork network, CyIdentifiable ident) {
+		return network.getRow(ident).get(CyNetwork.SELECTED, Boolean.class);
+	}
+
+	public static void setSelected(CyNetwork network, CyIdentifiable ident, boolean sel) {
+		network.getRow(ident).set(CyNetwork.SELECTED, sel);
+	}
+
 }
+
+

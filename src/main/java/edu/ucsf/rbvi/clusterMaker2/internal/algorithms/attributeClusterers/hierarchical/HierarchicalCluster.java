@@ -50,6 +50,7 @@ import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterAlgorithm;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterManager;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterResults;
 import edu.ucsf.rbvi.clusterMaker2.internal.api.ClusterViz;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.DistanceMetric;
 
 import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.AbstractAttributeClusterer;
 import edu.ucsf.rbvi.clusterMaker2.internal.ui.TreeView;
@@ -60,6 +61,7 @@ import edu.ucsf.rbvi.clusterMaker2.internal.ui.TreeView;
 public class HierarchicalCluster extends AbstractAttributeClusterer {
 	public static String SHORTNAME = "hierarchical";
 	public static String NAME = "Hierarchical cluster";
+
 	/**
 	 * Linkage types
 	 */
@@ -97,6 +99,7 @@ public class HierarchicalCluster extends AbstractAttributeClusterer {
 	public void run(TaskMonitor monitor) {
 		this.monitor = monitor;
 		monitor.setTitle("Performing "+getName());
+
 		List<String> nodeAttributeList = context.attributeList.getNodeAttributeList();
 		String edgeAttribute = context.attributeList.getEdgeAttribute();
 
@@ -110,11 +113,6 @@ public class HierarchicalCluster extends AbstractAttributeClusterer {
 			return;
 		}
 
-		if (nodeAttributeList != null && nodeAttributeList.size() < 2) {
-			monitor.showMessage(TaskMonitor.Level.ERROR,"Must have at least two node columns for cluster weighting");
-			return;
-		}
-
 		if (context.selectedOnly && nodeAttributeList != null && nodeAttributeList.size() > 1 
 				&& CyTableUtil.getNodesInState(network, CyNetwork.SELECTED, true).size() < 3) {
 			monitor.showMessage(TaskMonitor.Level.ERROR,"Must have at least three nodes to cluster");
@@ -123,7 +121,7 @@ public class HierarchicalCluster extends AbstractAttributeClusterer {
 
 		// Get our attributes we're going to use for the cluster
 		String[] attributeArray;
-		if (nodeAttributeList != null && nodeAttributeList.size() > 1) {
+		if (nodeAttributeList != null && nodeAttributeList.size() > 0) {
 			Collections.sort(nodeAttributeList);
 			attributeArray = new String[nodeAttributeList.size()];
 			int i = 0;
@@ -139,7 +137,9 @@ public class HierarchicalCluster extends AbstractAttributeClusterer {
 		resetAttributes(network, SHORTNAME);
 
 		// Create a new clusterer
-		RunHierarchical algorithm = new RunHierarchical(network, attributeArray, distanceMetric, clusterMethod, monitor, context);
+		DistanceMetric metric = context.metric.getSelectedValue();
+		RunHierarchical algorithm = new RunHierarchical(network, attributeArray, metric, 
+		                                                clusterMethod, monitor, context);
 
 		// Cluster the attributes, if requested
 		if (context.clusterAttributes && (attributeArray.length > 1 || context.isAssymetric())) {

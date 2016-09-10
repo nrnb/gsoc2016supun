@@ -40,19 +40,19 @@ import org.cytoscape.work.ContainsTunables;
 import org.cytoscape.work.Tunable;
 import org.cytoscape.work.util.ListMultipleSelection;
 import org.cytoscape.work.util.ListSingleSelection;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.DistanceMetric;
 
 import edu.ucsf.rbvi.clusterMaker2.internal.utils.ModelUtils;
 import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.AttributeList;
-import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.BaseMatrix;
-import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.DistanceMetric;
-import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.Matrix;
+import edu.ucsf.rbvi.clusterMaker2.internal.api.CyMatrix;
+// import edu.ucsf.rbvi.clusterMaker2.internal.algorithms.attributeClusterers.Matrix;
 
 public class FeatureVectorContext {
 	CyNetwork network;
 
 	@Tunable(description="Distance Metric", gravity=2.0)
 	public ListSingleSelection<DistanceMetric> metric = 
-		new ListSingleSelection<DistanceMetric>(BaseMatrix.distanceTypes);
+		new ListSingleSelection<DistanceMetric>(DistanceMetric.values());
 
 	@Tunable(description="Node attributes for cluster", groups="Array sources", 
 	         tooltip="You must choose at least 2 node columns for an attribute cluster", gravity=50 )
@@ -80,9 +80,10 @@ public class FeatureVectorContext {
 	public double edgeCutoff = 0.01;
 
 	public FeatureVectorContext() {
+		metric.setSelectedValue(DistanceMetric.EUCLIDEAN);
 	}
 
-	public List<String> getParams(Matrix matrix) {
+	public List<String> getParams(CyMatrix matrix) {
 		List<String> params = new ArrayList<String>();
 		params.add("metric="+metric.getSelectedValue().toString());
 		if (nodeAttributeList.getSelectedValues() != null)
